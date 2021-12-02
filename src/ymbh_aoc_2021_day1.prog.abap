@@ -1,99 +1,149 @@
 REPORT ymbh_aoc_2021_day1.
 
-CLASS lcl_level_meter DEFINITION FINAL.
+INTERFACE if_level_meter.
+  TYPES: BEGIN OF reading_with_result,
+           reading TYPE i,
+           result  TYPE char1,
+         END OF reading_with_result.
+  TYPES readings_with_result TYPE STANDARD TABLE OF reading_with_result WITH EMPTY KEY.
+  TYPES readings             TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+
+  METHODS process_level_measures IMPORTING readings      TYPE if_level_meter=>readings
+                                 RETURNING VALUE(result) TYPE i.
+ENDINTERFACE.
+
+CLASS level_meter DEFINITION.
 
   PUBLIC SECTION.
-    TYPES: BEGIN OF ts_readings_with_result,
-             reading TYPE i,
-             result  TYPE char1,
-           END OF ts_readings_with_result.
-    TYPES tt_readings_with_result TYPE STANDARD TABLE OF ts_readings_with_result WITH EMPTY KEY.
-    TYPES tt_readings TYPE STANDARD TABLE OF i WITH EMPTY KEY.
-
-    METHODS process_level_measures    IMPORTING readings         TYPE tt_readings
-                                      RETURNING VALUE(rv_result) TYPE i.
-
-    METHODS process_3_measure_windows IMPORTING readings      TYPE lcl_level_meter=>tt_readings
-                                      RETURNING VALUE(result) TYPE i.
+    INTERFACES if_level_meter.
 
   PRIVATE SECTION.
-    METHODS get_relation            IMPORTING previous_line    TYPE i
-                                              current_line     TYPE i
-                                    RETURNING VALUE(rv_result) TYPE char1.
+    CONSTANTS c_increasing_value TYPE char1 VALUE 'I'.
+    CONSTANTS c_decreasing_value TYPE char1 VALUE 'D'.
+    CONSTANTS c_equal_value      TYPE char1 VALUE 'E'.
 
-    METHODS classify_readings       IMPORTING i_readings                     TYPE lcl_level_meter=>tt_readings
-                                    RETURNING VALUE(rt_readings_with_result) TYPE lcl_level_meter=>tt_readings_with_result.
+    METHODS get_relation                  IMPORTING previous_line TYPE i
+                                                    current_line  TYPE i
+                                          RETURNING VALUE(result) TYPE char1.
 
-    METHODS count_increasing_values IMPORTING it_readings_with_result TYPE lcl_level_meter=>tt_readings_with_result
-                                    RETURNING VALUE(rv_result)        TYPE i.
+    METHODS classify_readings             IMPORTING readings                    TYPE if_level_meter=>readings
+                                          RETURNING VALUE(readings_with_result) TYPE if_level_meter=>readings_with_result.
 
-    METHODS proceed                 IMPORTING index         TYPE i
-                                              length        TYPE i
+    METHODS count_increasing_values       IMPORTING readings_with_result TYPE if_level_meter=>readings_with_result
+                                          RETURNING VALUE(result)        TYPE i.
 
-                                    RETURNING VALUE(result) TYPE abap_bool.
-    METHODS sum_three_lines         IMPORTING index         TYPE i
-                                              table         TYPE lcl_level_meter=>tt_readings
-                                    RETURNING VALUE(result) TYPE i.
+    METHODS get_relation_to_previous_line IMPORTING index         TYPE i
+                                                    table         TYPE if_level_meter=>readings
+                                          RETURNING VALUE(result) TYPE char1.
 
-    METHODS sum_up_three_values     IMPORTING readings      TYPE lcl_level_meter=>tt_readings
-                                    RETURNING VALUE(result) TYPE lcl_level_meter=>tt_readings.
+    METHODS first_line                    IMPORTING index         TYPE i
+                                          RETURNING VALUE(result) TYPE abap_bool.
 
+    METHODS increase_amount               IMPORTING reading       TYPE if_level_meter=>reading_with_result
+                                          RETURNING VALUE(result) TYPE i.
 ENDCLASS.
 
-CLASS lcl_level_meter IMPLEMENTATION.
+CLASS level_meter IMPLEMENTATION.
 
-  METHOD process_level_measures.
-    DATA(lt_readings_with_result) = classify_readings( readings ).
-    rv_result = count_increasing_values( lt_readings_with_result ).
-  ENDMETHOD.
-
-  METHOD count_increasing_values.
-    rv_result = REDUCE #( INIT sum = 0
-                          FOR reading IN it_readings_with_result
-                          NEXT sum = COND #( WHEN reading-result = |I| THEN sum + 1
-                                             ELSE sum ) ).
+  METHOD if_level_meter~process_level_measures.
+    DATA(readings_with_result) = classify_readings( readings ).
+    result = count_increasing_values( readings_with_result ).
   ENDMETHOD.
 
   METHOD classify_readings.
-    rt_readings_with_result  =
-          VALUE tt_readings_with_result( FOR line IN i_readings
-                                         INDEX INTO index
-                                         LET result = COND char1( WHEN index > 1
-                                                                  THEN get_relation( previous_line = i_readings[ index - 1 ]
-                                                                                     current_line  = i_readings[ index ] )
-                                                                  ELSE space )
-                                         IN (  reading = line
-                                               result = result ) ).
+    readings_with_result = VALUE #( FOR line IN readings
+                                    INDEX INTO index
+                                    LET result = get_relation_to_previous_line( index = index
+                                                                                table = readings )
+                                    IN ( reading = line
+                                         result  = result ) ).
+  ENDMETHOD.
+
+  METHOD count_increasing_values.
+    result = REDUCE #( INIT sum = 0
+                       FOR  reading IN readings_with_result
+                       NEXT sum = sum + increase_amount( reading ) ).
+  ENDMETHOD.
+
+  METHOD get_relation_to_previous_line.
+    IF first_line( index ).
+      RETURN.
+    ENDIF.
+
+    result = get_relation( previous_line = table[ index - 1 ]
+                           current_line  = table[ index ] ).
   ENDMETHOD.
 
   METHOD get_relation.
-    rv_result = COND #( WHEN current_line > previous_line THEN |I|
-                        WHEN current_line < previous_line THEN |D|
-                        ELSE |E| ).
+    result = COND #( WHEN current_line > previous_line THEN c_increasing_value
+                     WHEN current_line < previous_line THEN c_decreasing_value
+                     ELSE c_equal_value ).
   ENDMETHOD.
 
-  METHOD process_3_measure_windows.
+  METHOD first_line.
+    result = xsdbool( index = 1 ).
+  ENDMETHOD.
+
+  METHOD increase_amount.
+    result = SWITCH #( reading-result WHEN c_increasing_value THEN 1 ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS level_meter_advanced DEFINITION INHERITING FROM level_meter.
+
+  PUBLIC SECTION.
+    METHODS if_level_meter~process_level_measures REDEFINITION.
+
+  PRIVATE SECTION.
+    METHODS sum_up_three_values IMPORTING readings      TYPE if_level_meter=>readings
+                                RETURNING VALUE(result) TYPE if_level_meter=>readings.
+
+    METHODS sum_three_lines     IMPORTING index         TYPE i
+                                          table         TYPE if_level_meter=>readings
+                                RETURNING VALUE(result) TYPE i.
+
+    METHODS proceed             IMPORTING index         TYPE i
+                                          length        TYPE i
+                                RETURNING VALUE(result) TYPE abap_bool.
+    METHODS collect_three_lines IMPORTING index         TYPE i
+                                          readings      TYPE if_level_meter=>readings
+                                RETURNING VALUE(result) TYPE i.
+
+    METHODS delete_empty_lines  IMPORTING input         TYPE if_level_meter=>readings
+                                RETURNING VALUE(result) TYPE if_level_meter=>readings.
+ENDCLASS.
+
+CLASS level_meter_advanced IMPLEMENTATION.
+
+  METHOD if_level_meter~process_level_measures.
     DATA(three_sum_values) = sum_up_three_values( readings ).
-    DATA(classified_readings) = classify_readings( three_sum_values ).
-    result = count_increasing_values( classified_readings ).
+    result = super->if_level_meter~process_level_measures( three_sum_values ).
   ENDMETHOD.
 
   METHOD sum_up_three_values.
     result = VALUE #( FOR line IN readings
-                        INDEX INTO index
-                        LET sum = COND #( WHEN proceed( index  = index
-                                                        length = lines( readings ) ) = abap_true
-                                          THEN sum_three_lines( index = index
-                                                                table = readings ) ) IN
-                                           ( sum ) ).
-    DELETE result WHERE table_line = 0.
+                      INDEX INTO index
+                      LET sum = collect_three_lines( index    = index
+                                                     readings = readings )
+                      IN ( sum ) ).
+    result = delete_empty_lines( result ).
   ENDMETHOD.
 
+  METHOD collect_three_lines.
+    IF proceed( index = index length = lines( readings ) ).
+      result = sum_three_lines( index = index table = readings ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD delete_empty_lines.
+    result = input.
+    DELETE result WHERE table_line = 0.
+  ENDMETHOD.
 
   METHOD proceed.
     result = xsdbool( index <= length - 2 ).
   ENDMETHOD.
-
 
   METHOD sum_three_lines.
     result = table[ index ] + table[ index + 1 ] + table[ index + 2 ].
@@ -101,109 +151,180 @@ CLASS lcl_level_meter IMPLEMENTATION.
 
 ENDCLASS.
 
+CLASS level_meter_factory DEFINITION.
 
-CLASS lcl_application DEFINITION.
   PUBLIC SECTION.
-    TYPES tt_input TYPE RANGE OF i.
-
-    DATA mt_converted_values TYPE STANDARD TABLE OF i WITH EMPTY KEY.
-
-    METHODS run_first_part IMPORTING input         TYPE tt_input
-                           RETURNING VALUE(result) TYPE i.
-
-    METHODS run_second_part IMPORTING input         TYPE tt_input
-                            RETURNING VALUE(result) TYPE i.
-
+    METHODS get_level_meter_for_part IMPORTING part          TYPE i
+                                     RETURNING VALUE(result) TYPE REF TO if_level_meter.
 ENDCLASS.
 
-CLASS lcl_application IMPLEMENTATION.
+CLASS level_meter_factory IMPLEMENTATION.
 
-  METHOD run_first_part.
-    mt_converted_values = VALUE #( FOR line IN input
-                                    ( line-low ) ).
-    DATA(lo_level_meter) = NEW lcl_level_meter( ).
-    result = lo_level_meter->process_level_measures( mt_converted_values ).
-  ENDMETHOD.
-
-  METHOD run_second_part.
-    mt_converted_values = VALUE #( FOR line IN input
-                                    ( line-low ) ).
-    DATA(lo_level_meter) = NEW lcl_level_meter( ).
-    result = lo_level_meter->process_3_measure_windows( mt_converted_values ).
+  METHOD get_level_meter_for_part.
+    result = SWITCH #( part WHEN 1 THEN NEW level_meter( )
+                            WHEN 2 THEN NEW level_meter_advanced( ) ).
   ENDMETHOD.
 
 ENDCLASS.
 
+CLASS application DEFINITION.
 
-CLASS ltc_level_count DEFINITION FINAL FOR TESTING
+  PUBLIC SECTION.
+    TYPES input TYPE RANGE OF i.
+
+    METHODS constructor IMPORTING factory TYPE REF TO level_meter_factory.
+
+    METHODS run         IMPORTING input         TYPE input
+                                  part          TYPE i
+                        RETURNING VALUE(result) TYPE i.
+
+  PRIVATE SECTION.
+    DATA level_meter_factory TYPE REF TO level_meter_factory.
+
+    METHODS convert_input_values IMPORTING input         TYPE application=>input
+                                 RETURNING VALUE(result) TYPE if_level_meter=>readings.
+ENDCLASS.
+
+CLASS application IMPLEMENTATION.
+
+  METHOD constructor.
+    level_meter_factory = factory.
+  ENDMETHOD.
+
+  METHOD run.
+    DATA(readings)    = convert_input_values( input ).
+    DATA(level_meter) = level_meter_factory->get_level_meter_for_part( part ).
+    result            = level_meter->process_level_measures( readings ).
+  ENDMETHOD.
+
+  METHOD convert_input_values.
+    result = VALUE #( FOR line IN input ( line-low ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS tc_level_count DEFINITION FINAL FOR TESTING
   DURATION SHORT
   RISK LEVEL HARMLESS.
 
   PRIVATE SECTION.
-    DATA cut TYPE REF TO lcl_level_meter.
+    DATA cut TYPE REF TO level_meter.
 
     METHODS count_increasing_levels        FOR TESTING.
     METHODS count_increasing_levels_window FOR TESTING.
 
 ENDCLASS.
 
-
-CLASS ltc_level_count IMPLEMENTATION.
+CLASS tc_level_count IMPLEMENTATION.
 
   METHOD count_increasing_levels.
-    cut = NEW #( ).
-    DATA(lt_readings) = VALUE lcl_level_meter=>tt_readings( ( 199 ) ( 200 ) ( 208 ) ( 210 )
-                                                            ( 200 ) ( 207 ) ( 240 ) ( 269 )
-                                                            ( 260 ) ( 263 ) ).
+    cut = NEW level_meter( ).
+    DATA(readings) = VALUE if_level_meter=>readings( ( 199 ) ( 200 ) ( 208 ) ( 210 )
+                                                     ( 200 ) ( 207 ) ( 240 ) ( 269 )
+                                                     ( 260 ) ( 263 ) ).
     cl_abap_unit_assert=>assert_equals(
         exp = 7
-        act = cut->process_level_measures( lt_readings ) ).
+        act = cut->if_level_meter~process_level_measures( readings ) ).
   ENDMETHOD.
 
   METHOD count_increasing_levels_window.
-    cut = NEW #( ).
-    DATA(lt_readings) = VALUE lcl_level_meter=>tt_readings( ( 199 ) ( 200 ) ( 208 ) ( 210 )
-                                                            ( 200 ) ( 207 ) ( 240 ) ( 269 )
-                                                            ( 260 ) ( 263 ) ).
+    cut = NEW level_meter_advanced( ).
+    DATA(readings) = VALUE if_level_meter=>readings( ( 199 ) ( 200 ) ( 208 ) ( 210 )
+                                                     ( 200 ) ( 207 ) ( 240 ) ( 269 )
+                                                     ( 260 ) ( 263 ) ).
     cl_abap_unit_assert=>assert_equals(
         exp = 5
-        act = cut->process_3_measure_windows( lt_readings ) ).
-
+        act = cut->if_level_meter~process_level_measures( readings ) ).
   ENDMETHOD.
 
 ENDCLASS.
 
-CLASS ltc_input DEFINITION FOR TESTING
+CLASS tc_level_meter_factory DEFINITION FINAL FOR TESTING
   DURATION SHORT
   RISK LEVEL HARMLESS.
 
   PRIVATE SECTION.
-    DATA cut TYPE REF TO lcl_application.
-    METHODS convert_input_in_value_table FOR TESTING.
+    METHODS get_class_for_first_part  FOR TESTING.
+    METHODS get_class_for_second_part FOR TESTING.
+
 ENDCLASS.
 
+CLASS tc_level_meter_factory IMPLEMENTATION.
 
-CLASS ltc_input IMPLEMENTATION.
-  METHOD convert_input_in_value_table.
-    TYPES tt_values TYPE STANDARD TABLE OF i WITH EMPTY KEY.
-    cut = NEW #( ).
-    cut->run_first_part( VALUE #( ( sign = 'I' option = 'EQ' low = '199' )
-                       ( sign = 'I' option = 'EQ' low = '200' )
-                       ( sign = 'I' option = 'EQ' low = '208' )
-                       ( sign = 'I' option = 'EQ' low = '210' ) ) ).
-    DATA(lt_expected_values) = VALUE tt_values( ( 199 ) ( 200 ) ( 208 ) ( 210 ) ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = lt_expected_values
-        act = cut->mt_converted_values ).
+  METHOD get_class_for_first_part.
+    DATA(level_meter) = NEW level_meter_factory( )->get_level_meter_for_part( 1 ).
+    DATA(result) = xsdbool( level_meter IS INSTANCE OF level_meter ).
+    cl_abap_unit_assert=>assert_true(
+        act = result ).
   ENDMETHOD.
+
+  METHOD get_class_for_second_part.
+    DATA(level_meter) = NEW level_meter_factory( )->get_level_meter_for_part( 2 ).
+    DATA(result) = xsdbool( level_meter IS INSTANCE OF level_meter_advanced ).
+
+    cl_abap_unit_assert=>assert_true( act = result ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS td_level_meter_mock DEFINITION.
+  PUBLIC SECTION.
+    INTERFACES if_level_meter.
+ENDCLASS.
+
+CLASS td_level_meter_mock IMPLEMENTATION.
+
+  METHOD if_level_meter~process_level_measures.
+    result = 5.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS td_level_meter_factory_mock DEFINITION INHERITING FROM level_meter_factory.
+
+  PUBLIC SECTION.
+    METHODS get_level_meter_for_part REDEFINITION.
+
+ENDCLASS.
+
+CLASS td_level_meter_factory_mock IMPLEMENTATION.
+
+  METHOD get_level_meter_for_part.
+    result = NEW td_level_meter_mock( ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS tc_application DEFINITION FINAL FOR TESTING
+  DURATION SHORT
+  RISK LEVEL HARMLESS.
+
+  PRIVATE SECTION.
+    DATA cut TYPE REF TO application.
+    METHODS setup.
+
+    METHODS part_one FOR TESTING.
+ENDCLASS.
+
+CLASS tc_application IMPLEMENTATION.
+
+  METHOD part_one.
+    cl_abap_unit_assert=>assert_equals(
+        exp = 5
+        act = cut->run( input = VALUE #( (  ) ) part = 1 ) ).
+  ENDMETHOD.
+
+  METHOD setup.
+    cut = NEW #( NEW td_level_meter_factory_mock( ) ).
+  ENDMETHOD.
+
 ENDCLASS.
 
 DATA value TYPE i.
-SELECT-OPTIONS: so_input FOR value.
+SELECT-OPTIONS: so_input FOR value NO INTERVALS.
 
 START-OF-SELECTION.
 
-  DATA(lo_application) = NEW lcl_application( ).
-  DATA(lv_result) = lo_application->run_first_part( so_input[] ).
-  WRITE / |Lösung erster Teil:  { lo_application->run_first_part( so_input[] ) }|.
-  WRITE / |Lösung zweiter Teil: { lo_application->run_second_part( so_input[] ) }|.
+  DATA(lo_application) = NEW application( NEW level_meter_factory( ) ).
+  WRITE / |Lösung erster Teil:  { lo_application->run( input = so_input[] part = 1 ) }|.
+  WRITE / |Lösung zweiter Teil: { lo_application->run( input = so_input[] part = 2 ) }|.
