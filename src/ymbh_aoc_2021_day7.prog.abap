@@ -95,12 +95,10 @@ CLASS positioning IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD calculate_real_fuel.
-    DATA fuel_for_step TYPE i.
+    DATA intermediate TYPE f.
     DATA(steps) = abs( actual_position - target ).
-    DO steps TIMES.
-      fuel_for_step = fuel_for_step + 1.
-      result = result + fuel_for_step.
-    ENDDO.
+    intermediate = ( 1 + steps ) / 2.
+    result =  steps * intermediate.
   ENDMETHOD.
 
   METHOD get_total_fuel_for.
@@ -129,7 +127,6 @@ CLASS positioning IMPLEMENTATION.
     ENDLOOP.
     result = minimum_fuel.
   ENDMETHOD.
-
 
   METHOD get_position_with_real_fuel.
     DATA minimum_fuel TYPE if_position=>origin_position.
