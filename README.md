@@ -16,3 +16,5 @@ Advent of Code 2021
 --- Day 6: Lanternfish --- ==> [Quellcode](src/ymbh_aoc_2021_day6.prog.abap)
 
 --- Day 7: The Treachery of Whales --- ==>  [Quellcode](src/ymbh_aoc_2021_day7.prog.abap)
+
+--- Day 8: Seven Segment Search --- ==> [Quellcode](src/ymbh_aoc_2021_day8.prog.abap)
