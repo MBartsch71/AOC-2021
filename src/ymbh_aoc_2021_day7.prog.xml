@@ -6,6 +6,7 @@
     <NAME>YMBH_AOC_2021_DAY7</NAME>
     <DBAPL>S</DBAPL>
     <SUBC>1</SUBC>
+    <RLOAD>E</RLOAD>
     <FIXPT>X</FIXPT>
     <LDBNAME>D$S</LDBNAME>
     <UCCHECK>X</UCCHECK>
@@ -13,7 +14,7 @@
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>Advent of Code 2021 - Day 6 - The Treachery of Whales</ENTRY>
+     <ENTRY>Advent of Code 2021 - Day 7 - The Treachery of Whales</ENTRY>
      <LENGTH>53</LENGTH>
     </item>
    </TPOOL>
