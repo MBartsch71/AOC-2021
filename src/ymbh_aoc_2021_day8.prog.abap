@@ -42,12 +42,17 @@ ENDCLASS.
 CLASS input_processor DEFINITION FINAL.
 
   PUBLIC SECTION.
-    METHODS constructor IMPORTING raw_input TYPE stringtab.
+    METHODS constructor       IMPORTING raw_input TYPE stringtab.
+
     METHODS get_curated_input RETURNING VALUE(result) TYPE if_input=>input_table.
 
   PRIVATE SECTION.
     DATA curated_input TYPE if_input=>input_table.
-    METHODS curate_input IMPORTING raw_input TYPE stringtab.
+
+    METHODS curate_input                IMPORTING raw_input TYPE stringtab.
+
+    METHODS split_line_in_curated_input IMPORTING line          TYPE string
+                                        RETURNING VALUE(result) TYPE if_input=>input_line.
 
 ENDCLASS.
 
@@ -58,17 +63,19 @@ CLASS input_processor IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD curate_input.
-    DATA output_line TYPE if_input=>input_line.
-    LOOP AT raw_input ASSIGNING FIELD-SYMBOL(<line>).
-      SPLIT <line> AT '|' INTO output_line-signal_pattern output_line-output_value.
-      APPEND output_line TO curated_input.
-      CLEAR output_line.
-    ENDLOOP.
+    curated_input = VALUE #( FOR line IN raw_input
+                             LET curated_line = split_line_in_curated_input( line )
+                             IN
+                             ( signal_pattern = curated_line-signal_pattern
+                               output_value   = curated_line-output_value ) ).
   ENDMETHOD.
-
 
   METHOD get_curated_input.
     result = curated_input.
+  ENDMETHOD.
+
+  METHOD split_line_in_curated_input.
+    SPLIT line AT '|' INTO result-signal_pattern result-output_value.
   ENDMETHOD.
 
 ENDCLASS.
@@ -390,7 +397,6 @@ CLASS tc_digit_parser DEFINITION FINAL FOR TESTING
     METHODS find_easy_digit_count FOR TESTING.
 ENDCLASS.
 
-
 CLASS tc_digit_parser IMPLEMENTATION.
 
   METHOD find_easy_digit_count.
@@ -426,9 +432,10 @@ CLASS tc_digit_decoder DEFINITION FINAL FOR TESTING
     DATA cut TYPE REF TO digit_decoder.
 
     METHODS setup.
+
     METHODS find_unique_numbers_of_string FOR TESTING.
-    METHODS calculate_result_test_1       FOR TESTING.
-    METHODS calculate_result_test_2       FOR TESTING.
+    METHODS calculate_result_test_8394    FOR TESTING.
+    METHODS calculate_result_test_9781    FOR TESTING.
 
 ENDCLASS.
 
@@ -455,16 +462,18 @@ CLASS tc_digit_decoder IMPLEMENTATION.
         act = cut->get_digits( |acedgfb cdfbe gcdfa fbcad dab cefabd cdfgeb eafb cagedb ab| ) ).
   ENDMETHOD.
 
-  METHOD calculate_result_test_1.
-    DATA(curated_input) = VALUE if_input=>input_line( signal_pattern = |be cfbegad cbdgef fgaecd cgeb fdcge agebfd fecdb fabcd edb | output_value = | fdgacbe cefdb cefbgd gcbe| ).
+  METHOD calculate_result_test_8394.
+    DATA(curated_input) = VALUE if_input=>input_line( signal_pattern = |be cfbegad cbdgef fgaecd cgeb fdcge agebfd fecdb fabcd edb |
+                                                      output_value = | fdgacbe cefdb cefbgd gcbe| ).
     cut->get_digits( curated_input-signal_pattern ).
     cl_abap_unit_assert=>assert_equals(
         exp = 8394
         act = cut->calculate_result( curated_input-output_value ) ).
   ENDMETHOD.
 
-  METHOD calculate_result_test_2.
-    DATA(curated_input) = VALUE if_input=>input_line( signal_pattern = |edbfga begcd cbg gc gcadebf fbgde acbgfd abcde gfcbed gfec | output_value = | fcgedb cgb dgebacf gc| ).
+  METHOD calculate_result_test_9781.
+    DATA(curated_input) = VALUE if_input=>input_line( signal_pattern = |edbfga begcd cbg gc gcadebf fbgde acbgfd abcde gfcbed gfec |
+                                                      output_value = | fcgedb cgb dgebacf gc| ).
     cut->get_digits( curated_input-signal_pattern ).
     cl_abap_unit_assert=>assert_equals(
         exp = 9781
@@ -483,6 +492,7 @@ CLASS tc_application DEFINITION FINAL FOR TESTING
 
     METHODS setup.
     METHODS get_raw_input RETURNING VALUE(result) TYPE raw_input.
+
     METHODS calculate_final_result FOR TESTING.
 
 ENDCLASS.
