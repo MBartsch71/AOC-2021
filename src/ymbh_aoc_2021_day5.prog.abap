@@ -283,7 +283,7 @@ CLASS vectors IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD forward.
-    result = xsdbool( line-x_end > line-x_start ).
+    result = xsdbool( line-x_start < line-x_end ).
   ENDMETHOD.
 
   METHOD backward.
@@ -310,12 +310,12 @@ CLASS vectors IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD dia_x_minus_y_plus.
-    result = xsdbool( ( line-x_start > line-y_start AND
+    result = xsdbool( ( line-x_start > line-x_end AND
                         line-y_start < line-y_end ) ).
   ENDMETHOD.
 
   METHOD dia_x_minus_y_minus.
-    result = xsdbool( ( line-x_start > line-y_start AND
+    result = xsdbool( ( line-x_start > line-x_end AND
                         line-y_start > line-y_end ) ).
   ENDMETHOD.
 
@@ -351,28 +351,28 @@ CLASS vectors IMPLEMENTATION.
   METHOD populate_dia_x_plus_y_plus.
     result = VALUE #( ( x         = line-x_start
                         y         = line-y_start
-                        length    = line-x_end - line-x_start
+                        length    = abs( line-x_end - line-x_start )
                         direction = |+x+y| ) ).
   ENDMETHOD.
 
   METHOD populate_dia_x_plus_y_minus.
     result = VALUE #( ( x         = line-x_start
                         y         = line-y_start
-                        length    = line-x_start - line-x_end
+                        length    = abs( line-x_end - line-x_start )
                         direction = |+x-y|  ) ).
   ENDMETHOD.
 
   METHOD populate_dia_x_minus_y_plus.
     result = VALUE #( ( x         = line-x_start
                         y         = line-y_start
-                        length    = line-x_start - line-x_end
+                        length    = abs( line-x_start - line-x_end )
                         direction = |-x+y|  ) ).
   ENDMETHOD.
 
   METHOD populate_dia_x_minus_y_minus.
     result = VALUE #( ( x         = line-x_start
                         y         = line-y_start
-                        length    = line-x_start - line-x_end
+                        length    = abs( line-x_start - line-x_end )
                         direction = |-x-y|  ) ).
   ENDMETHOD.
 
@@ -671,18 +671,16 @@ CLASS tc_vectors IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_grid_population_vectors.
-    DATA(expected_values) = VALUE if_vectors=>vectors(
-                                                       ( x = 0 y = 0 length = 8 direction = |+x+y| )
+    DATA(expected_values) = VALUE if_vectors=>vectors( ( x = 0 y = 0 length = 8 direction = |+x+y| )
                                                        ( x = 0 y = 9 length = 2 direction = |x| )
                                                        ( x = 0 y = 9 length = 5 direction = |x| )
                                                        ( x = 1 y = 4 length = 2 direction = |x| )
                                                        ( x = 2 y = 1 length = 1 direction = |y| )
                                                        ( x = 3 y = 4 length = 6 direction = |x| )
-                                                       ( x = 5 y = 5 length = -3 direction = |+x-y| )
+                                                       ( x = 5 y = 5 length = 3 direction = |+x-y| )
                                                        ( x = 6 y = 4 length = 4 direction = |-x-y| )
                                                        ( x = 7 y = 0 length = 4 direction = |y| )
-                                                       ( x = 8 y = 0 length = 8 direction = |-x+y| )
-                                                        ).
+                                                       ( x = 8 y = 0 length = 8 direction = |-x+y| ) ).
     cl_abap_unit_assert=>assert_equals(
         exp = expected_values
         act = cut->get_vectors( ) ).
@@ -718,7 +716,7 @@ CLASS tc_grid IMPLEMENTATION.
                                                        ( x = 1 y = 4 length = 2 direction = |x| )
                                                        ( x = 2 y = 1 length = 1 direction = |y| )
                                                        ( x = 3 y = 4 length = 6 direction = |x| )
-                                                       ( x = 5 y = 5 length = -3 direction = |+x-y| )
+                                                       ( x = 5 y = 5 length = 3 direction = |+x-y| )
                                                        ( x = 6 y = 4 length = 4 direction = |-x-y| )
                                                        ( x = 7 y = 0 length = 4 direction = |y| )
                                                        ( x = 8 y = 0 length = 8 direction = |-x+y| ) ).
