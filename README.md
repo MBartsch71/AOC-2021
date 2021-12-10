@@ -20,3 +20,5 @@ Advent of Code 2021
 --- Day 8: Seven Segment Search --- ==> [Quellcode](src/ymbh_aoc_2021_day8.prog.abap)
 
 --- Day 9: Smoke Basin --- ==> [Quellcode](src/ymbh_aoc_2021_day9.prog.abap)
+
+--- Day 10: Syntax Scoring --- ==> [Quellcode](src/ymbh_aoc_2021_day10.prog.abap)
