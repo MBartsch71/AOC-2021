@@ -30,7 +30,7 @@ INTERFACE if_cell_collection.
                                RETURNING VALUE(result) TYPE REF TO if_cell.
 
   METHODS get_item             IMPORTING index         TYPE i
-                               RETURNING VALUE(result) TYPE REF TO if_cell.
+                               RETURNING VALUE(result) TYPE cell.
 
 ENDINTERFACE.
 
@@ -42,6 +42,13 @@ INTERFACE if_neighbourhood.
          END OF neighbour.
   TYPES neighbours TYPE STANDARD TABLE OF neighbour WITH EMPTY KEY
                                                     WITH NON-UNIQUE SORTED KEY lowest COMPONENTS is_lowest_in_neighbourhood.
+
+  TYPES: BEGIN OF basin_area,
+           max_x TYPE i,
+           max_y TYPE i,
+           min_x TYPE i,
+           min_y TYPE i,
+         END OF basin_area.
   DATA neighbourhood TYPE neighbours.
 
   METHODS build_neighbourhood IMPORTING cell_collection TYPE REF TO if_cell_collection.
@@ -50,10 +57,15 @@ INTERFACE if_neighbourhood.
 
   METHODS get_lowest_cells    RETURNING VALUE(result) TYPE if_neighbourhood=>neighbours.
 
+  METHODS get_basin_count     RETURNING VALUE(result) TYPE i.
+
+  METHODS get_cell_by_location  IMPORTING cell          TYPE if_cell_collection=>cell
+                                RETURNING VALUE(result) TYPE neighbour.
+
 ENDINTERFACE.
 
 INTERFACE if_iterator.
-  METHODS get_next RETURNING VALUE(result) TYPE REF TO object.
+  METHODS get_next RETURNING VALUE(result) TYPE if_cell_collection=>cell.
   METHODS has_next RETURNING VALUE(result) TYPE abap_bool.
 ENDINTERFACE.
 
@@ -112,7 +124,7 @@ CLASS cell_collection IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD if_cell_collection~get_item.
-    result = collection[ index ]-cell.
+    result = collection[ index ].
   ENDMETHOD.
 
 ENDCLASS.
@@ -156,20 +168,30 @@ CLASS neighbourhood DEFINITION FINAL.
     INTERFACES if_neighbourhood.
 
   PRIVATE SECTION.
-    METHODS check_lowest_value IMPORTING neighbours    TYPE REF TO if_cell_collection
-                                         cell_value    TYPE i
-                               RETURNING VALUE(result) TYPE abap_bool.
+    TYPES: BEGIN OF basin_cell,
+             cell TYPE REF TO if_cell,
+           END OF basin_cell.
+    DATA cell_collection TYPE REF TO if_cell_collection.
+    DATA basin_cells TYPE STANDARD TABLE OF basin_cell WITH EMPTY KEY.
+    DATA results TYPE STANDARD TABLE OF i.
+
+    METHODS check_lowest_value      IMPORTING neighbours    TYPE REF TO if_cell_collection
+                                              cell_value    TYPE i
+                                    RETURNING VALUE(result) TYPE abap_bool.
+    METHODS investigate_neighbourse IMPORTING cell          TYPE if_neighbourhood=>neighbour
+                                    RETURNING VALUE(result) TYPE i.
 
 ENDCLASS.
 
 CLASS neighbourhood IMPLEMENTATION.
 
   METHOD if_neighbourhood~build_neighbourhood.
+    me->cell_collection = cell_collection.
     DATA(iterator) = iterator=>get_instance( collection = cell_collection ).
 
 
     WHILE iterator->if_iterator~has_next( ).
-      DATA(cell) = CAST if_cell( iterator->if_iterator~get_next( ) ).
+      DATA(cell) = iterator->if_iterator~get_next( )-cell.
       DATA(neighbours) = NEW cell_collection( ).
       DATA(up_cell) = cell_collection->get_item_by_location( location = VALUE #( x = cell->location-x y = cell->location-y - 1 ) ).
       IF up_cell IS BOUND.
@@ -205,7 +227,7 @@ CLASS neighbourhood IMPLEMENTATION.
     result = abap_true.
     DATA(neighbour_iterator) = iterator=>get_instance( neighbours ).
     WHILE neighbour_iterator->if_iterator~has_next( ).
-      DATA(neighbour_cell) = CAST if_cell( neighbour_iterator->if_iterator~get_next( ) ).
+      DATA(neighbour_cell) = neighbour_iterator->if_iterator~get_next( )-cell.
       IF neighbour_cell->get_value( ) <= cell_value.
         result = abap_false.
       ENDIF.
@@ -216,6 +238,47 @@ CLASS neighbourhood IMPLEMENTATION.
     result = FILTER #( if_neighbourhood~neighbourhood
                           USING KEY lowest
                           WHERE is_lowest_in_neighbourhood = abap_true ).
+  ENDMETHOD.
+
+  METHOD if_neighbourhood~get_basin_count.
+    DATA(lowest_cells) = if_neighbourhood~get_lowest_cells( ).
+
+    LOOP AT lowest_cells ASSIGNING FIELD-SYMBOL(<cell>).
+      basin_cells = VALUE #( ( cell = <cell>-cell ) ).
+      DATA(test) = investigate_neighbourse( <cell> ).
+      results = value #( base results ( test ) ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD investigate_neighbourse.
+
+    DATA(neighbours) = cell-neighbours.
+    DATA(iterator) = iterator=>get_instance( neighbours ).
+    WHILE iterator->if_iterator~has_next( ).
+      DATA(i_cell) = iterator->if_iterator~get_next( ).
+      IF i_cell-cell->get_value( ) = 9.
+        CONTINUE.
+      ENDIF.
+      IF line_exists( basin_cells[ cell = i_cell-cell ] ).
+        CONTINUE.
+      ENDIF.
+      basin_cells = VALUE #( BASE basin_cells ( cell = i_cell-cell ) ).
+      DATA(nb_cell) = if_neighbourhood~get_cell_by_location( i_cell ).
+      result = result + investigate_neighbourse( nb_cell ).
+    ENDWHILE.
+    result = result + 1.
+
+  ENDMETHOD.
+
+  METHOD if_neighbourhood~get_cell_by_location.
+    LOOP AT if_neighbourhood~neighbourhood ASSIGNING FIELD-SYMBOL(<neighbour>).
+      IF <neighbour>-cell->get_coordinates( ) = cell-cell->get_coordinates( ).
+        result = <neighbour>.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.
@@ -295,8 +358,8 @@ CLASS application IMPLEMENTATION.
 
   METHOD get_results.
     result = me->result.
+    data(test) = neighbourhood->get_basin_count( ).
   ENDMETHOD.
-
 
   METHOD build_result.
     DATA(lowest_cells) = neighbourhood->get_lowest_cells( ).
@@ -320,7 +383,6 @@ CLASS tc_cell DEFINITION FINAL FOR TESTING
     METHODS setup.
     METHODS get_value_from_cell FOR TESTING.
 ENDCLASS.
-
 
 CLASS tc_cell IMPLEMENTATION.
 
@@ -347,6 +409,7 @@ CLASS tc_cell_collection DEFINITION FINAL FOR TESTING
     METHODS fill_collection_with_3_cells FOR TESTING.
     METHODS get_cell_by_location         FOR TESTING.
     METHODS get_whole_collection         FOR TESTING.
+    METHODS get_basin_count              FOR TESTING.
 ENDCLASS.
 
 CLASS tc_cell_collection IMPLEMENTATION.
@@ -356,14 +419,59 @@ CLASS tc_cell_collection IMPLEMENTATION.
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 0 ) value = 2 ) ).
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 0 ) value = 1 ) ).
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 0 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 0 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 0 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 0 ) value = 4 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 0 ) value = 3 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 0 ) value = 2 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 0 ) value = 1 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 0 ) value = 0 ) ).
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 1 ) value = 3 ) ).
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 1 ) value = 9 ) ).
     cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 1 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 1 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 1 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 1 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 1 ) value = 4 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 1 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 1 ) value = 2 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 1 ) value = 1 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 2 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 2 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 2 ) value = 5 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 2 ) value = 6 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 2 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 2 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 2 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 2 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 2 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 2 ) value = 2 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 3 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 3 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 3 ) value = 6 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 3 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 3 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 3 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 3 ) value = 6 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 3 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 3 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 3 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 4 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 4 ) value = 8 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 4 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 4 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 4 ) value = 9 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 4 ) value = 6 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 4 ) value = 5 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 4 ) value = 6 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 4 ) value = 7 ) ).
+    cut->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 4 ) value = 8 ) ).
+
   ENDMETHOD.
 
   METHOD fill_collection_with_3_cells.
     cl_abap_unit_assert=>assert_equals(
-        exp = 6
+        exp = 50
         act = cut->if_cell_collection~get_count( ) ).
   ENDMETHOD.
 
@@ -375,10 +483,14 @@ CLASS tc_cell_collection IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_whole_collection.
-    DATA(cell) = cut->if_cell_collection~get_item( 1 ).
+    DATA(cell) = cut->if_cell_collection~get_item( 1 )-cell.
     cl_abap_unit_assert=>assert_equals(
         exp = 2
         act = cell->get_value( ) ).
+  ENDMETHOD.
+
+  METHOD get_basin_count.
+
   ENDMETHOD.
 
 ENDCLASS.
@@ -391,8 +503,9 @@ CLASS tc_neighbourhood DEFINITION FINAL FOR TESTING
     DATA cut TYPE REF TO neighbourhood.
 
     METHODS setup.
-    METHODS build_neighbourhood FOR TESTING.
+    METHODS build_neighbourhood    FOR TESTING.
     METHODS get_lowest_cells_count FOR TESTING.
+    METHODS get_basin_count        FOR TESTING.
 ENDCLASS.
 
 
@@ -404,22 +517,72 @@ CLASS tc_neighbourhood IMPLEMENTATION.
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 0 ) value = 2 ) ).
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 0 ) value = 1 ) ).
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 0 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 0 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 0 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 0 ) value = 4 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 0 ) value = 3 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 0 ) value = 2 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 0 ) value = 1 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 0 ) value = 0 ) ).
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 1 ) value = 3 ) ).
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 1 ) value = 9 ) ).
     cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 1 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 1 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 1 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 1 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 1 ) value = 4 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 1 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 1 ) value = 2 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 1 ) value = 1 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 2 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 2 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 2 ) value = 5 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 2 ) value = 6 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 2 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 2 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 2 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 2 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 2 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 2 ) value = 2 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 3 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 3 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 3 ) value = 6 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 3 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 3 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 3 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 3 ) value = 6 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 3 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 3 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 3 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 0 y = 4 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 1 y = 4 ) value = 8 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 2 y = 4 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 3 y = 4 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 4 y = 4 ) value = 9 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 5 y = 4 ) value = 6 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 6 y = 4 ) value = 5 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 7 y = 4 ) value = 6 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 8 y = 4 ) value = 7 ) ).
+    cell_collection->if_cell_collection~add( NEW cell( location = VALUE #( x = 9 y = 4 ) value = 8 ) ).
     cut->if_neighbourhood~build_neighbourhood( cell_collection ).
   ENDMETHOD.
 
   METHOD build_neighbourhood.
     cl_abap_unit_assert=>assert_equals(
-        exp = 6
+        exp = 50
         act = cut->if_neighbourhood~get_count( ) ).
   ENDMETHOD.
 
   METHOD get_lowest_cells_count.
     cl_abap_unit_assert=>assert_equals(
-        exp = 2
+        exp = 7
         act = lines( cut->if_neighbourhood~get_lowest_cells( ) ) ).
+  ENDMETHOD.
+
+  METHOD get_basin_count.
+    cl_abap_unit_assert=>assert_equals(
+        exp = 14
+        act = cut->if_neighbourhood~get_basin_count( ) ).
   ENDMETHOD.
 
 ENDCLASS.
@@ -477,5 +640,5 @@ START-OF-SELECTION.
 
   DATA(application) = NEW application( so_input[] ).
   application->process_values( ).
-  data(low_cells) = application->get_low_points( ).
+  DATA(low_cells) = application->get_low_points( ).
   WRITE / |Ergebnis Teil 1: { application->get_results( ) }|.
