@@ -22,3 +22,5 @@ Advent of Code 2021
 --- Day 9: Smoke Basin --- ==> [Quellcode](src/ymbh_aoc_2021_day9.prog.abap)
 
 --- Day 10: Syntax Scoring --- ==> [Quellcode](src/ymbh_aoc_2021_day10.prog.abap)
+
+--- Day 11: Dumbo Octopus --- ==> [Quellcode](src/ymbh_aoc_2021_day11.prog.abap)
