@@ -41,9 +41,19 @@ INTERFACE if_table.
   METHODS get_cell_by_location IMPORTING coordinates   TYPE if_coordinates=>coordinates
                                RETURNING VALUE(result) TYPE REF TO if_table_cell.
 
+  METHODS get_cell_by_index IMPORTING index         TYPE i
+                            RETURNING VALUE(result) TYPE cell.
+
   METHODS build_table IMPORTING cols TYPE i
                                 rows TYPE i.
 
+ENDINTERFACE.
+
+INTERFACE if_iterator.
+  CLASS-METHODS get_instance IMPORTING collection    TYPE REF TO if_table
+                             RETURNING VALUE(result) TYPE REF TO if_iterator.
+  METHODS has_next RETURNING VALUE(result) TYPE abap_bool.
+  METHODS get_next RETURNING VALUE(result) TYPE if_table=>cell.
 ENDINTERFACE.
 
 INTERFACE if_input.
@@ -70,6 +80,12 @@ INTERFACE if_input.
 ENDINTERFACE.
 
 INTERFACE if_folding.
+  TYPES: BEGIN OF cell_area,
+           start_col TYPE i,
+           start_row TYPE i,
+           end_col   TYPE i,
+           end_row   TYPE i,
+         END OF cell_area.
 
   METHODS build_table IMPORTING input_data TYPE if_input=>range_input.
 
@@ -146,6 +162,43 @@ CLASS paper_table IMPLEMENTATION.
 
   METHOD if_table~rows.
     result = cells[ KEY rows INDEX lines( cells ) ]-y.
+  ENDMETHOD.
+
+  METHOD if_table~get_cell_by_index.
+    result = cells[ index ].
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS iterator DEFINITION CREATE PRIVATE.
+  PUBLIC SECTION.
+    INTERFACES if_iterator.
+
+    METHODS constructor IMPORTING collection TYPE REF TO if_table.
+
+  PRIVATE SECTION.
+    DATA collection TYPE REF TO if_table.
+    DATA current_item TYPE i VALUE 1.
+
+ENDCLASS.
+
+CLASS iterator IMPLEMENTATION.
+
+  METHOD constructor.
+    me->collection = collection.
+  ENDMETHOD.
+
+  METHOD if_iterator~get_instance.
+    result = NEW iterator( collection ).
+  ENDMETHOD.
+
+  METHOD if_iterator~get_next.
+    result = collection->get_cell_by_index( current_item ).
+    current_item = current_item + 1.
+  ENDMETHOD.
+
+  METHOD if_iterator~has_next.
+    result = xsdbool( current_item <= collection->get_cell_count( ) ).
   ENDMETHOD.
 
 ENDCLASS.
@@ -241,6 +294,8 @@ CLASS folding DEFINITION FINAL.
     DATA destination_table TYPE REF TO if_table.
     DATA display_table TYPE stringtab.
     DATA folding_instructions TYPE if_input=>folding_instructions.
+    DATA remaining_area TYPE if_folding=>cell_area.
+    DATA folding_area TYPE if_folding=>cell_area.
 
     METHODS populate_values IMPORTING coordinates TYPE if_input=>inputs.
 
@@ -248,25 +303,19 @@ CLASS folding DEFINITION FINAL.
 
     METHODS add_cell_values IMPORTING row           TYPE if_table=>cells
                             RETURNING VALUE(result) TYPE string.
-    METHODS determine_cols
-      IMPORTING
-        instruction   TYPE REF TO if_input=>folding_instruction
-      RETURNING
-        VALUE(result) TYPE i.
-    METHODS determine_rows
-      IMPORTING
-        instruction   TYPE REF TO if_input=>folding_instruction
-      RETURNING
-        VALUE(result) TYPE i.
-    METHODS transfer_data
-      IMPORTING
-        instruction TYPE REF TO if_input=>folding_instruction.
-    METHODS transfer_remaining_half
-      IMPORTING
-        instruction TYPE REF TO if_input=>folding_instruction.
-    METHODS transfer_folding_half
-      IMPORTING
-        instruction TYPE REF TO if_input=>folding_instruction.
+
+    METHODS determine_cols          IMPORTING instruction   TYPE REF TO if_input=>folding_instruction
+                                    RETURNING VALUE(result) TYPE i.
+
+    METHODS determine_rows          IMPORTING instruction   TYPE REF TO if_input=>folding_instruction
+                                    RETURNING VALUE(result) TYPE i.
+
+    METHODS build_areas IMPORTING instruction TYPE REF TO if_input=>folding_instruction.
+    METHODS build_remaining_area IMPORTING instruction TYPE REF TO if_input=>folding_instruction.
+    METHODS build_folding_area IMPORTING instruction TYPE REF TO if_input=>folding_instruction.
+
+
+
 
 ENDCLASS.
 
@@ -316,10 +365,10 @@ CLASS folding IMPLEMENTATION.
 
   METHOD if_folding~fold_table.
     LOOP AT folding_instructions REFERENCE INTO DATA(instruction).
+      build_areas( instruction ).
       destination_table = NEW paper_table( ).
-      destination_table->build_table( EXPORTING cols = determine_cols( instruction )
-                                                rows = determine_rows( instruction ) ).
-      transfer_data( instruction ).
+      destination_table->build_table( EXPORTING cols = remaining_area-end_col
+                                                rows = remaining_area-end_row ).
     ENDLOOP.
   ENDMETHOD.
 
@@ -333,18 +382,30 @@ CLASS folding IMPLEMENTATION.
                                          ELSE source_table->rows( ) - 1 ).
   ENDMETHOD.
 
-  METHOD transfer_data.
-    transfer_remaining_half( instruction ).
-    transfer_folding_half( instruction ).
+  METHOD build_areas.
+    build_remaining_area( instruction ).
+    build_folding_area( instruction ).
   ENDMETHOD.
 
-  METHOD transfer_remaining_half.
-
+  METHOD build_remaining_area.
+    remaining_area = VALUE #( start_col = 0
+                              start_row = 0
+                              end_col   = COND #( WHEN instruction->axis = `y` THEN source_table->cols( )
+                                                  ELSE instruction->index - 1 )
+                              end_row   = COND #( WHEN instruction->axis = `x` THEN source_table->rows( )
+                                                  ELSE instruction->index - 1 ) ).
   ENDMETHOD.
 
-  METHOD transfer_folding_half.
-
+  METHOD build_folding_area.
+    folding_area = VALUE #( start_col = COND #( WHEN instruction->axis = `y` THEN 0
+                                                ELSE instruction->index + 1 )
+                            start_row = COND #( WHEN instruction->axis = `x` THEN 0
+                                                ELSE instruction->index + 1  )
+                            end_col   = source_table->cols( )
+                            end_row   = source_table->rows( ) ).
   ENDMETHOD.
+
+
 
 ENDCLASS.
 
@@ -506,7 +567,43 @@ CLASS tc_input_processor IMPLEMENTATION.
 
 ENDCLASS.
 
+CLASS tc_iterator DEFINITION FINAL FOR TESTING
+  DURATION SHORT
+  RISK LEVEL HARMLESS.
 
+  PRIVATE SECTION.
+    DATA cut TYPE REF TO if_iterator.
+
+    METHODS setup.
+    METHODS get_3_items_from_collection FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS tc_iterator IMPLEMENTATION.
+
+  METHOD setup.
+    DATA(collection) = NEW paper_table( ).
+    collection->if_table~build_table( cols = 2 rows = 0 ).
+    collection->if_table~add_cell_value( VALUE #( x = 0 y = 0 cell = NEW table_cell( '.' ) ) ).
+    collection->if_table~add_cell_value( VALUE #( x = 1 y = 0 cell = NEW table_cell( '#' ) ) ).
+    collection->if_table~add_cell_value( VALUE #( x = 2 y = 0 cell = NEW table_cell( '.' ) ) ).
+    cut = iterator=>if_iterator~get_instance( collection ).
+  ENDMETHOD.
+
+
+  METHOD get_3_items_from_collection.
+    DATA cells TYPE if_table=>cells.
+    WHILE cut->has_next( ).
+      cells = VALUE #( BASE cells ( cut->get_next( ) ) ).
+    ENDWHILE.
+    cl_abap_unit_assert=>assert_equals(
+        exp = 3
+        act = lines( cells ) ).
+  ENDMETHOD.
+
+
+ENDCLASS.
 CLASS tc_folding DEFINITION FINAL FOR TESTING
   DURATION SHORT
   RISK LEVEL HARMLESS.
