@@ -24,3 +24,14 @@ Advent of Code 2021
 --- Day 10: Syntax Scoring --- ==> [Quellcode](src/ymbh_aoc_2021_day10.prog.abap)
 
 --- Day 11: Dumbo Octopus --- ==> [Quellcode](src/ymbh_aoc_2021_day11.prog.abap)
+
+--- Day 12: Passage Pathing --- ==>  [Quellcode](src/ymbh_aoc_2021_day12.prog.abap)
+
+--- Day 13: Transparent Origami --- ==> [Quellcode](src/ymbh_aoc_2021_day13.prog.abap)
+
+--- Day 14: Extended Polymerization --- ==> [Quellcode](src/ymbh_aoc_2021_day14.prog.abap)
+
+
+
+--- Day 21: Dirac Dice --- ==> [Quellcode](src/ymbh_aoc_2021_day21.prog.abap)
+
