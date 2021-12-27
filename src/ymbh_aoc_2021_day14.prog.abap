@@ -1,51 +1,42 @@
 REPORT ymbh_aoc_2021_day14.
 
 INTERFACE if_input.
-  TYPES: BEGIN OF pair_insertion,
-           rule      TYPE c LENGTH 2,
-           insertion TYPE c LENGTH 1,
-         END OF pair_insertion.
-  TYPES pair_insertions TYPE SORTED TABLE OF pair_insertion WITH UNIQUE KEY primary_key COMPONENTS rule.
+  TYPES: BEGIN OF rule,
+           character_pair TYPE c LENGTH 2,
+           insert_char    TYPE c LENGTH 1,
+         END OF rule.
+  TYPES rules TYPE SORTED TABLE OF rule WITH UNIQUE KEY primary_key COMPONENTS character_pair.
   TYPES raw_input TYPE RANGE OF text1024.
 
-  METHODS curate_input IMPORTING raw_input TYPE raw_input.
+  METHODS get_template RETURNING VALUE(result) TYPE string.
 
-  METHODS get_template_string RETURNING VALUE(result) TYPE string.
-
-  METHODS get_insertion_rules RETURNING VALUE(result) TYPE if_input=>pair_insertions.
+  METHODS get_rule_table RETURNING VALUE(result) TYPE rules.
 
 ENDINTERFACE.
 
-INTERFACE if_sequence.
-  METHODS process_sequence_times IMPORTING times TYPE i.
-  METHODS get_sequence           RETURNING VALUE(result) TYPE string.
-
-ENDINTERFACE.
-
-INTERFACE if_string_investigator.
-  TYPES: BEGIN OF character_info,
-           character TYPE c LENGTH 1,
+INTERFACE if_template.
+  TYPES: BEGIN OF char_pair,
+           char_pair TYPE c LENGTH 2,
            amount    TYPE decfloat34,
-         END OF character_info.
-  TYPES characters_info TYPE SORTED TABLE OF character_info WITH UNIQUE KEY primary_key COMPONENTS character
-                                                            WITH NON-UNIQUE SORTED KEY amount COMPONENTS amount.
+         END OF char_pair.
+  TYPES char_pairs TYPE SORTED TABLE OF char_pair WITH UNIQUE KEY primary_key COMPONENTS char_pair.
 
-  METHODS build_distinct_characters IMPORTING char_string TYPE string.
+  TYPES: BEGIN OF char,
+           char   TYPE c LENGTH 1,
+           amount TYPE decfloat34,
+         END OF char.
+  TYPES chars TYPE SORTED TABLE OF char WITH UNIQUE KEY primary_key COMPONENTS char
+                                        WITH NON-UNIQUE SORTED KEY amount COMPONENTS amount.
+
+  METHODS split_template IMPORTING template TYPE string.
+
+  METHODS process_template_times IMPORTING times TYPE i.
 
   METHODS count_chars.
 
-  METHODS get_characters RETURNING VALUE(result) TYPE characters_info.
+  METHODS get_char_pair_table RETURNING VALUE(result) TYPE char_pairs.
 
-  METHODS get_max_char RETURNING VALUE(result) TYPE character_info.
-
-  METHODS get_min_char RETURNING VALUE(result) TYPE character_info.
-
-ENDINTERFACE.
-
-INTERFACE if_application.
-
-  METHODS perform_part_1 RETURNING VALUE(result) TYPE decfloat34.
-  METHODS perform_part_2 RETURNING VALUE(result) TYPE decfloat34.
+  METHODS get_char_table RETURNING VALUE(result) TYPE chars.
 
 ENDINTERFACE.
 
@@ -54,225 +45,186 @@ CLASS input_processor DEFINITION FINAL.
 
   PUBLIC SECTION.
     INTERFACES if_input.
+    METHODS constructor IMPORTING raw_input TYPE if_input=>raw_input.
 
   PRIVATE SECTION.
-    DATA sequence TYPE string.
-    DATA rules TYPE if_input=>pair_insertions.
+    DATA template TYPE string.
+    DATA rules TYPE if_input=>rules.
 
-    METHODS extract_sequence         IMPORTING raw_input TYPE if_input=>raw_input.
+    METHODS extract_template   IMPORTING raw_input TYPE if_input=>raw_input.
 
-    METHODS building_insertion_rules IMPORTING raw_input TYPE if_input=>raw_input.
+    METHODS extract_rules      IMPORTING raw_input TYPE if_input=>raw_input.
 
-    METHODS split_line_into_rule     IMPORTING line          TYPE text1024
-                                     RETURNING VALUE(result) TYPE if_input=>pair_insertion.
+    METHODS split_line_in_rule IMPORTING line          TYPE text1024
+                               RETURNING VALUE(result) TYPE if_input=>rule.
+
 ENDCLASS.
-
 
 CLASS input_processor IMPLEMENTATION.
 
-  METHOD if_input~curate_input.
-    extract_sequence( raw_input ).
-    building_insertion_rules( raw_input ).
+  METHOD constructor.
+    extract_template( raw_input ).
+    extract_rules( raw_input ).
   ENDMETHOD.
 
-  METHOD if_input~get_template_string.
-    result = sequence.
+  METHOD if_input~get_template.
+    result = template.
   ENDMETHOD.
 
-  METHOD if_input~get_insertion_rules.
+  METHOD if_input~get_rule_table.
     result = rules.
   ENDMETHOD.
 
-  METHOD extract_sequence.
-    sequence = raw_input[ 1 ]-low.
+  METHOD extract_template.
+    template = raw_input[ 1 ]-low.
   ENDMETHOD.
 
-  METHOD building_insertion_rules.
+  METHOD extract_rules.
     rules = VALUE #( FOR line IN raw_input FROM 2
-                        ( split_line_into_rule( line-low ) ) ).
+                        ( split_line_in_rule( line-low ) ) ).
   ENDMETHOD.
 
-  METHOD split_line_into_rule.
-    SPLIT line AT ' -> ' INTO result-rule result-insertion.
+  METHOD split_line_in_rule.
+    SPLIT line AT ' -> ' INTO result-character_pair result-insert_char.
   ENDMETHOD.
 
 ENDCLASS.
 
-CLASS sequence_builder DEFINITION FINAL.
+CLASS template_processor DEFINITION FINAL.
 
   PUBLIC SECTION.
-    INTERFACES if_sequence.
-    METHODS constructor IMPORTING sequence TYPE string
-                                  rules    TYPE if_input=>pair_insertions.
+    INTERFACES if_template.
+    METHODS constructor IMPORTING rules TYPE if_input=>rules.
 
   PRIVATE SECTION.
-    DATA sequence TYPE string.
-    DATA rules TYPE if_input=>pair_insertions.
-    DATA current_offset TYPE i.
-    METHODS get_next_pair_from_sequence RETURNING VALUE(result) TYPE string.
-    METHODS get_insertion_for_pair
-      IMPORTING
-        pair          TYPE string
-      RETURNING
-        VALUE(result) TYPE string.
-    METHODS build_next_section
-      IMPORTING
-        pair          TYPE string
-        insertion     TYPE string
-        index         TYPE i
-      RETURNING
-        VALUE(result) TYPE string.
+    DATA template TYPE string.
+    DATA char_pairs TYPE if_template=>char_pairs.
+    DATA new_pairs  TYPE if_template=>char_pairs.
+    DATA chars      TYPE if_template=>chars.
+
+    DATA rules TYPE if_input=>rules.
+
+    METHODS build_new_pairs_after_rules IMPORTING line          TYPE if_template=>char_pair
+                                        RETURNING VALUE(result) TYPE if_template=>char_pairs.
+
+    METHODS add_pair IMPORTING pair   TYPE char2
+                               amount TYPE decfloat.
+
+    METHODS build_first_pair IMPORTING line          TYPE if_template=>char_pair
+                                       insert_char   TYPE char1
+                             RETURNING VALUE(result) TYPE char2 .
+
+    METHODS build_second_pair IMPORTING line          TYPE if_template=>char_pair
+                                        insert_char   TYPE c
+                              RETURNING VALUE(result) TYPE char2.
+
+    METHODS update_char_line IMPORTING line TYPE if_template=>char_pair.
+
+    METHODS update_char IMPORTING char   TYPE char1
+                                  amount TYPE decfloat34.
 
 ENDCLASS.
 
-CLASS sequence_builder IMPLEMENTATION.
+CLASS template_processor IMPLEMENTATION.
 
   METHOD constructor.
     me->rules = rules.
-    me->sequence = sequence.
   ENDMETHOD.
 
-  METHOD if_sequence~get_sequence.
-    result = sequence.
+  METHOD if_template~get_char_pair_table.
+    result = char_pairs.
   ENDMETHOD.
 
-  METHOD if_sequence~process_sequence_times.
+  METHOD if_template~split_template.
+    me->template = template.
+    char_pairs = VALUE #( FOR i = 0 THEN i + 1 UNTIL i = strlen( template ) - 1
+                            ( char_pair = substring( val = template off = i len = 2 )
+                              amount    = 1 ) ).
+  ENDMETHOD.
+
+  METHOD if_template~process_template_times.
     DO times TIMES.
-      DATA(new_sequence) = ``.
-      WHILE current_offset < strlen( sequence ) - 1.
-        DATA(pair) = get_next_pair_from_sequence( ).
-        DATA(insertion) = get_insertion_for_pair( pair ).
-        new_sequence = |{ new_sequence }{ build_next_section( pair = pair insertion = insertion index = sy-index ) }|.
-      ENDWHILE.
-      current_offset = 0.
-      sequence = new_sequence.
+      new_pairs = VALUE if_template=>char_pairs(
+                              FOR line IN char_pairs
+                              ( LINES OF build_new_pairs_after_rules( line ) ) ).
+      char_pairs = new_pairs.
     ENDDO.
   ENDMETHOD.
 
-  METHOD get_next_pair_from_sequence.
-    result = substring( val = sequence off = current_offset len = 2 ).
-    current_offset = current_offset + 1.
+  METHOD build_new_pairs_after_rules.
+    DATA(insert_char) = rules[ character_pair = line-char_pair ]-insert_char.
+    add_pair( pair = build_first_pair( line = line insert_char = insert_char ) amount = line-amount ).
+    add_pair( pair = build_second_pair( line = line insert_char = insert_char ) amount = line-amount ).
   ENDMETHOD.
 
-  METHOD get_insertion_for_pair.
-    result = rules[ rule = pair ]-insertion.
-  ENDMETHOD.
-
-  METHOD build_next_section.
-    result = SWITCH #( index WHEN 1 THEN |{ pair(1) }{ insertion }{ pair+1(1) }|
-                       ELSE |{ insertion }{ pair+1(1) }| ).
-  ENDMETHOD.
-
-ENDCLASS.
-
-CLASS string_investigator DEFINITION FINAL.
-
-  PUBLIC SECTION.
-    INTERFACES if_string_investigator.
-
-  PRIVATE SECTION.
-    DATA chars_info TYPE if_string_investigator=>characters_info.
-    DATA char_string TYPE string.
-
-    METHODS fill_distinct_strings.
-
-    METHODS get_character         IMPORTING index         TYPE any
-                                  RETURNING VALUE(result) TYPE if_string_investigator=>characters_info.
-
-ENDCLASS.
-
-CLASS string_investigator IMPLEMENTATION.
-
-  METHOD if_string_investigator~build_distinct_characters.
-    me->char_string = char_string.
-    fill_distinct_strings( ).
-  ENDMETHOD.
-
-  METHOD if_string_investigator~get_characters.
-    result = chars_info.
-  ENDMETHOD.
-
-  METHOD fill_distinct_strings.
-    chars_info = VALUE #( FOR i = 0 THEN i + 1 UNTIL i = strlen( char_string )
-                            ( LINES OF get_character( index = i ) ) ).
-  ENDMETHOD.
-
-  METHOD get_character.
-    DATA(char) = substring( val = char_string off = index len = 1 ).
-    IF NOT line_exists( chars_info[ character = char ] ).
-      result = VALUE #( ( character = char ) ).
+  METHOD add_pair.
+    IF line_exists( new_pairs[ char_pair = pair ] ).
+      new_pairs[ char_pair = pair ]-amount = new_pairs[ char_pair = pair ]-amount + amount.
+    ELSE.
+      new_pairs = VALUE #( BASE new_pairs ( char_pair = pair amount = amount ) ).
     ENDIF.
   ENDMETHOD.
 
-  METHOD if_string_investigator~count_chars.
-    LOOP AT chars_info REFERENCE INTO DATA(line).
-      FIND ALL OCCURRENCES OF line->character IN char_string MATCH COUNT DATA(count).
-      line->amount = count.
+  METHOD build_first_pair.
+    result = |{ line-char_pair(1) }{ insert_char }|.
+  ENDMETHOD.
+
+  METHOD build_second_pair.
+    result = |{ insert_char }{ line-char_pair+1(1) }|.
+  ENDMETHOD.
+
+  METHOD if_template~count_chars.
+    LOOP AT char_pairs REFERENCE INTO DATA(line).
+      update_char_line( line->* ).
     ENDLOOP.
+    DATA(last_char) = substring( val = template off = strlen( template ) - 1 len = 1 ).
+    update_char( char = CONV #( last_char ) amount = 1 ).
   ENDMETHOD.
 
-  METHOD if_string_investigator~get_max_char.
-    result = chars_info[ KEY amount INDEX lines( chars_info ) ].
+  METHOD if_template~get_char_table.
+    result = chars.
   ENDMETHOD.
 
-  METHOD if_string_investigator~get_min_char.
-    result = chars_info[ KEY amount INDEX 1 ].
+  METHOD update_char_line.
+    update_char( char = line-char_pair(1) amount = line-amount ).
+  ENDMETHOD.
+
+  METHOD update_char.
+    IF line_exists( chars[ char = char ] ).
+      chars[ char = char ]-amount = chars[ char = char ]-amount + amount.
+    ELSE.
+      chars = VALUE #( BASE chars ( char = char amount = amount ) ).
+    ENDIF.
   ENDMETHOD.
 
 ENDCLASS.
 
-CLASS application DEFINITION FINAL.
-
+CLASS application DEFINITION.
   PUBLIC SECTION.
-    TYPES raw_input TYPE RANGE OF text1024.
-
-    INTERFACES if_application.
-    METHODS constructor IMPORTING raw_input TYPE raw_input.
-
-  PRIVATE SECTION.
-    DATA r_input TYPE raw_input.
-    DATA input_processor TYPE REF TO if_input.
-    DATA sequence TYPE REF TO if_sequence.
-    DATA string_investigator TYPE REF TO if_string_investigator.
+    METHODS run IMPORTING raw_input     TYPE if_input=>raw_input
+                          runs          TYPE i
+                RETURNING VALUE(result) TYPE decfloat34.
 
 ENDCLASS.
 
 CLASS application IMPLEMENTATION.
 
-  METHOD constructor.
-    r_input = raw_input.
-  ENDMETHOD.
+  METHOD run.
+    DATA(input_processor) = NEW input_processor( raw_input ).
+    DATA(template) = input_processor->if_input~get_template( ).
+    DATA(rules) = input_processor->if_input~get_rule_table( ).
 
-  METHOD if_application~perform_part_1.
-    input_processor = NEW input_processor( ).
-    input_processor->curate_input( r_input ).
+    DATA(template_processor) = NEW template_processor( rules ).
+    template_processor->if_template~split_template( template ).
+    template_processor->if_template~process_template_times( runs ).
+    template_processor->if_template~count_chars( ).
 
-    sequence = NEW sequence_builder( sequence = input_processor->get_template_string( )
-                                     rules    = input_processor->get_insertion_rules( ) ).
-    sequence->process_sequence_times( 10 ).
+    DATA(chars) = template_processor->if_template~get_char_table( ).
+    DATA(most_char) = chars[ KEY amount INDEX lines( chars ) ].
+    DATA(least_char) = chars[ KEY amount INDEX 1 ].
 
-    DATA(result_string) = sequence->get_sequence( ).
-    string_investigator = NEW string_investigator( ).
-    string_investigator->build_distinct_characters( result_string ).
-    string_investigator->count_chars( ).
+    result = most_char-amount - least_char-amount.
 
-    result = string_investigator->get_max_char( )-amount - string_investigator->get_min_char( )-amount.
-  ENDMETHOD.
-
-  METHOD if_application~perform_part_2.
-    input_processor = NEW input_processor( ).
-    input_processor->curate_input( r_input ).
-
-    sequence = NEW sequence_builder( sequence = input_processor->get_template_string( )
-                                     rules    = input_processor->get_insertion_rules( ) ).
-    sequence->process_sequence_times( 40 ).
-
-    DATA(result_string) = sequence->get_sequence( ).
-    string_investigator = NEW string_investigator( ).
-    string_investigator->build_distinct_characters( result_string ).
-    string_investigator->count_chars( ).
-
-    result = string_investigator->get_max_char( )-amount - string_investigator->get_min_char( )-amount.
   ENDMETHOD.
 
 ENDCLASS.
@@ -285,203 +237,18 @@ CLASS tc_input DEFINITION FINAL FOR TESTING
     DATA cut TYPE REF TO if_input.
 
     METHODS setup.
-    METHODS get_sequence_from_curatd_input FOR TESTING.
-    METHODS get_substitution_pattern       FOR TESTING.
+    METHODS extract_template_from_input FOR TESTING.
+    METHODS extract_rule_table_from_input FOR TESTING.
+
 ENDCLASS.
+
 
 CLASS tc_input IMPLEMENTATION.
 
-  METHOD setup.
-    DATA(raw_input) = VALUE if_input=>raw_input( ( sign = 'I' option = 'EQ' low = 'NNCB' )
-                                                 ( sign = 'I' option = 'EQ' low = 'CH -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'HH -> N' )
-                                                 ( sign = 'I' option = 'EQ' low = 'CB -> H' )
-                                                 ( sign = 'I' option = 'EQ' low = 'NH -> C' )
-                                                 ( sign = 'I' option = 'EQ' low = 'HB -> C' )
-                                                 ( sign = 'I' option = 'EQ' low = 'HC -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'HN -> C' )
-                                                 ( sign = 'I' option = 'EQ' low = 'NN -> C' )
-                                                 ( sign = 'I' option = 'EQ' low = 'BH -> H' )
-                                                 ( sign = 'I' option = 'EQ' low = 'NC -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'NB -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'BN -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'BB -> N' )
-                                                 ( sign = 'I' option = 'EQ' low = 'BC -> B' )
-                                                 ( sign = 'I' option = 'EQ' low = 'CC -> N' )
-                                                 ( sign = 'I' option = 'EQ' low = 'CN -> C' ) ).
-    cut = NEW input_processor( ).
-    cut->curate_input( raw_input ).
-  ENDMETHOD.
-
-  METHOD get_sequence_from_curatd_input.
-    DATA(sequence) = `NNCB`.
+  METHOD extract_template_from_input.
     cl_abap_unit_assert=>assert_equals(
-        exp = sequence
-        act = cut->get_template_string( ) ).
-  ENDMETHOD.
-
-  METHOD get_substitution_pattern.
-    DATA(expected_values) = VALUE if_input=>pair_insertions( ( rule = 'BB' insertion = 'N' )
-                                                             ( rule = 'BC' insertion = 'B' )
-                                                             ( rule = 'BH' insertion = 'H' )
-                                                             ( rule = 'BN' insertion = 'B' )
-                                                             ( rule = 'CB' insertion = 'H' )
-                                                             ( rule = 'CC' insertion = 'N' )
-                                                             ( rule = 'CH' insertion = 'B' )
-                                                             ( rule = 'CN' insertion = 'C' )
-                                                             ( rule = 'HB' insertion = 'C' )
-                                                             ( rule = 'HC' insertion = 'B' )
-                                                             ( rule = 'HH' insertion = 'N' )
-                                                             ( rule = 'NB' insertion = 'B' )
-                                                             ( rule = 'NC' insertion = 'B' )
-                                                             ( rule = 'HN' insertion = 'C' )
-                                                             ( rule = 'NH' insertion = 'C' )
-                                                             ( rule = 'NN' insertion = 'C' ) ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = expected_values
-        act = cut->get_insertion_rules( ) ).
-  ENDMETHOD.
-
-ENDCLASS.
-
-CLASS tc_sequence_builder DEFINITION FINAL FOR TESTING
-  DURATION SHORT
-  RISK LEVEL HARMLESS.
-
-  PRIVATE SECTION.
-    DATA cut TYPE REF TO if_sequence.
-
-    METHODS setup.
-    METHODS get_rules RETURNING VALUE(result) TYPE if_input=>pair_insertions.
-
-    METHODS get_sequence_after_1st_step FOR TESTING.
-    METHODS get_sequence_after_3_steps  FOR TESTING.
-
-ENDCLASS.
-
-
-CLASS tc_sequence_builder IMPLEMENTATION.
-
-  METHOD setup.
-    cut = NEW sequence_builder( sequence = 'NNCB' rules = get_rules( ) ).
-  ENDMETHOD.
-
-  METHOD get_rules.
-    result = VALUE #( ( rule = 'BB' insertion = 'N' )
-                      ( rule = 'BC' insertion = 'B' )
-                      ( rule = 'BH' insertion = 'H' )
-                      ( rule = 'BN' insertion = 'B' )
-                      ( rule = 'CB' insertion = 'H' )
-                      ( rule = 'CC' insertion = 'N' )
-                      ( rule = 'CH' insertion = 'B' )
-                      ( rule = 'CN' insertion = 'C' )
-                      ( rule = 'HB' insertion = 'C' )
-                      ( rule = 'HC' insertion = 'B' )
-                      ( rule = 'HH' insertion = 'N' )
-                      ( rule = 'NB' insertion = 'B' )
-                      ( rule = 'NC' insertion = 'B' )
-                      ( rule = 'HN' insertion = 'C' )
-                      ( rule = 'NH' insertion = 'C' )
-                      ( rule = 'NN' insertion = 'C' ) ).
-  ENDMETHOD.
-
-  METHOD get_sequence_after_1st_step.
-    cut->process_sequence_times( 1 ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = 'NCNBCHB'
-        act = cut->get_sequence( ) ).
-  ENDMETHOD.
-
-  METHOD get_sequence_after_3_steps.
-    cut->process_sequence_times( 3 ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = 'NBBBCNCCNBBNBNBBCHBHHBCHB'
-        act = cut->get_sequence( ) ).
-  ENDMETHOD.
-
-ENDCLASS.
-
-CLASS tc_string_investigator DEFINITION FINAL FOR TESTING
-  DURATION SHORT
-  RISK LEVEL HARMLESS.
-
-  PRIVATE SECTION.
-    DATA cut TYPE REF TO if_string_investigator.
-
-    METHODS setup.
-    METHODS build_distinct_string_table FOR TESTING.
-    METHODS count_amount_of_characters  FOR TESTING.
-    METHODS get_max_count_of_chars      FOR TESTING.
-    METHODS get_min_count_char          FOR TESTING.
-ENDCLASS.
-
-CLASS tc_string_investigator IMPLEMENTATION.
-
-  METHOD setup.
-    cut = NEW string_investigator( ).
-  ENDMETHOD.
-
-  METHOD build_distinct_string_table.
-    DATA(expected_values) = VALUE if_string_investigator=>characters_info( ( character = 'B' amount = 0 ) "11
-                                                                           ( character = 'C' amount = 0 ) "5
-                                                                           ( character = 'H' amount = 0 ) "4
-                                                                           ( character = 'N' amount = 0 ) ). "5
-    cut->build_distinct_characters( |NBBBCNCCNBBNBNBBCHBHHBCHB| ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = expected_values
-        act = cut->get_characters( ) ).
-  ENDMETHOD.
-
-  METHOD count_amount_of_characters.
-    DATA(expected_values) = VALUE if_string_investigator=>characters_info( ( character = 'B' amount = 11 )
-                                                                           ( character = 'C' amount = 5 )
-                                                                           ( character = 'H' amount = 4 )
-                                                                           ( character = 'N' amount = 5 ) ).
-    cut->build_distinct_characters( |NBBBCNCCNBBNBNBBCHBHHBCHB| ).
-    cut->count_chars( ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = expected_values
-        act = cut->get_characters( ) ).
-
-  ENDMETHOD.
-
-  METHOD get_max_count_of_chars.
-    cut->build_distinct_characters( |NBBBCNCCNBBNBNBBCHBHHBCHB| ).
-    cut->count_chars( ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = 11
-        act = cut->get_max_char( )-amount ).
-  ENDMETHOD.
-
-  METHOD get_min_count_char.
-    cut->build_distinct_characters( |NBBBCNCCNBBNBNBBCHBHHBCHB| ).
-    cut->count_chars( ).
-    cl_abap_unit_assert=>assert_equals(
-        exp = 4
-        act = cut->get_min_char( )-amount ).
-  ENDMETHOD.
-
-ENDCLASS.
-
-CLASS tc_application DEFINITION FINAL FOR TESTING
-  DURATION SHORT
-  RISK LEVEL HARMLESS.
-
-  PRIVATE SECTION.
-    DATA cut TYPE REF TO if_application.
-
-    METHODS setup.
-    METHODS get_result_from_part_1 FOR TESTING.
-ENDCLASS.
-
-
-CLASS tc_application IMPLEMENTATION.
-
-
-  METHOD get_result_from_part_1.
-    cl_abap_unit_assert=>assert_equals(
-        exp = 1588
-        act = cut->perform_part_1( ) ).
+        exp = |NNCB|
+        act = cut->get_template( ) ).
   ENDMETHOD.
 
   METHOD setup.
@@ -503,17 +270,123 @@ CLASS tc_application IMPLEMENTATION.
                          ( sign = 'I' option = 'EQ' low = 'BC -> B' )
                          ( sign = 'I' option = 'EQ' low = 'CC -> N' )
                          ( sign = 'I' option = 'EQ' low = 'CN -> C' ) ).
-    cut = NEW application( raw_input ).
+    cut = NEW input_processor( raw_input ).
+  ENDMETHOD.
+
+  METHOD extract_rule_table_from_input.
+    DATA(expected_values) = VALUE if_input=>rules( ( character_pair = 'CH' insert_char = 'B' )
+                                                   ( character_pair = 'HH' insert_char = 'N' )
+                                                   ( character_pair = 'CB' insert_char = 'H' )
+                                                   ( character_pair = 'NH' insert_char = 'C' )
+                                                   ( character_pair = 'HB' insert_char = 'C' )
+                                                   ( character_pair = 'HC' insert_char = 'B' )
+                                                   ( character_pair = 'HN' insert_char = 'C' )
+                                                   ( character_pair = 'NN' insert_char = 'C' )
+                                                   ( character_pair = 'BH' insert_char = 'H' )
+                                                   ( character_pair = 'NC' insert_char = 'B' )
+                                                   ( character_pair = 'NB' insert_char = 'B' )
+                                                   ( character_pair = 'BN' insert_char = 'B' )
+                                                   ( character_pair = 'BB' insert_char = 'N' )
+                                                   ( character_pair = 'BC' insert_char = 'B' )
+                                                   ( character_pair = 'CC' insert_char = 'N' )
+                                                   ( character_pair = 'CN' insert_char = 'C' ) ).
+
+    cl_abap_unit_assert=>assert_equals(
+        exp = expected_values
+        act = cut->get_rule_table( ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS tc_template DEFINITION FINAL FOR TESTING
+  DURATION SHORT
+  RISK LEVEL HARMLESS.
+
+  PRIVATE SECTION.
+    DATA cut TYPE REF TO if_template.
+
+    METHODS setup.
+    METHODS split_template_in_pairs      FOR TESTING.
+    METHODS build_pairs_after_3_rounds   FOR TESTING.
+    METHODS count_chars_after_ten_rounds FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS tc_template IMPLEMENTATION.
+
+  METHOD setup.
+    DATA(rules) = VALUE if_input=>rules( ( character_pair = 'CH' insert_char = 'B' )
+                                         ( character_pair = 'HH' insert_char = 'N' )
+                                         ( character_pair = 'CB' insert_char = 'H' )
+                                         ( character_pair = 'NH' insert_char = 'C' )
+                                         ( character_pair = 'HB' insert_char = 'C' )
+                                         ( character_pair = 'HC' insert_char = 'B' )
+                                         ( character_pair = 'HN' insert_char = 'C' )
+                                         ( character_pair = 'NN' insert_char = 'C' )
+                                         ( character_pair = 'BH' insert_char = 'H' )
+                                         ( character_pair = 'NC' insert_char = 'B' )
+                                         ( character_pair = 'NB' insert_char = 'B' )
+                                         ( character_pair = 'BN' insert_char = 'B' )
+                                         ( character_pair = 'BB' insert_char = 'N' )
+                                         ( character_pair = 'BC' insert_char = 'B' )
+                                         ( character_pair = 'CC' insert_char = 'N' )
+                                         ( character_pair = 'CN' insert_char = 'C' ) ).
+    cut = NEW template_processor( rules ).
+  ENDMETHOD.
+
+  METHOD split_template_in_pairs.
+    DATA(expected_values) = VALUE if_template=>char_pairs( ( char_pair = 'NN' amount = 1 )
+                                                           ( char_pair = 'NC' amount = 1 )
+                                                           ( char_pair = 'CB' amount = 1 ) ).
+    cut->split_template( `NNCB` ).
+    cl_abap_unit_assert=>assert_equals(
+        exp = expected_values
+        act = cut->get_char_pair_table( ) ).
+  ENDMETHOD.
+
+  METHOD build_pairs_after_3_rounds.
+    DATA(expected_values) = VALUE if_template=>char_pairs( ( char_pair = 'NB' amount = 4 )
+                                                           ( char_pair = 'BB' amount = 4 )
+                                                           ( char_pair = 'BC' amount = 3 )
+                                                           ( char_pair = 'CN' amount = 2 )
+                                                           ( char_pair = 'NC' amount = 1 )
+                                                           ( char_pair = 'CC' amount = 1 )
+                                                           ( char_pair = 'BN' amount = 2 )
+                                                           ( char_pair = 'CH' amount = 2 )
+                                                           ( char_pair = 'HB' amount = 3 )
+                                                           ( char_pair = 'BH' amount = 1 )
+                                                           ( char_pair = 'HH' amount = 1 ) ).
+    cut->split_template( `NNCB` ).
+    cut->process_template_times( 3 ).
+
+    cl_abap_unit_assert=>assert_equals(
+        exp = expected_values
+        act = cut->get_char_pair_table( ) ).
+  ENDMETHOD.
+
+  METHOD count_chars_after_ten_rounds.
+    DATA(expected_values) = VALUE if_template=>chars( ( char = 'B' amount = 1749 )
+                                                      ( char = 'C' amount = 298 )
+                                                      ( char = 'H' amount = 161 )
+                                                      ( char = 'N' amount = 865 ) ).
+    cut->split_template( 'NNCB' ).
+    cut->process_template_times( 10 ).
+    cut->count_chars( ).
+    cl_abap_unit_assert=>assert_equals(
+        exp = expected_values
+        act = cut->get_char_table( ) ).
   ENDMETHOD.
 
 ENDCLASS.
 
 DATA input TYPE text1024.
-SELECT-OPTIONS: so_input FOR input NO INTERVALS.
+
+SELECT-OPTIONS so_input FOR input NO INTERVALS.
+PARAMETERS: p_runs TYPE i.
 
 START-OF-SELECTION.
 
-  DATA(application) = NEW application( so_input[] ).
+  DATA(application) = NEW application( ).
 
-  WRITE / |Ergebnis Teil 1: { application->if_application~perform_part_1( ) }|.
-  WRITE / |Ergebnis Teil 2: { application->if_application~perform_part_2( ) }|.
+  WRITE / |Ergebnis nach { p_runs } runs -> { application->run( raw_input = so_input[] runs = p_runs ) }|.
